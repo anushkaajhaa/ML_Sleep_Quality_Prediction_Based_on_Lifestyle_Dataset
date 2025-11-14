@@ -1,0 +1,91 @@
+import pandas as pd
+import numpy as np
+from sklearn.model_selection import train_test_split
+from sklearn.neural_network import MLPClassifier
+from sklearn.preprocessing import StandardScaler, OneHotEncoder, LabelEncoder
+from sklearn.metrics import (
+    accuracy_score, classification_report, confusion_matrix, roc_curve, auc, roc_auc_score
+)
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+# Load and preprocess data (customize as needed) 
+df = pd.read_csv("Sleep_health_and_lifestyle_dataset.csv")
+df[['Systolic', 'Diastolic']] = df['Blood Pressure'].str.split('/', expand=True).astype(float)
+
+features = [
+    'Sleep Duration', 'Physical Activity Level', 'Stress Level', 'BMI Category',
+    'Systolic', 'Diastolic', 'Heart Rate', 'Daily Steps', 'Sleep Disorder'
+]
+X = df[features]
+y = df['Quality of Sleep']
+
+# Categorical encoding
+X = pd.get_dummies(X)
+le = LabelEncoder()
+y_encoded = le.fit_transform(y)
+
+# Train-test split
+X_train, X_test, y_train, y_test = train_test_split(X, y_encoded, test_size=0.2, random_state=42)
+
+# Feature scaling
+scaler = StandardScaler()
+X_train = scaler.fit_transform(X_train)
+X_test = scaler.transform(X_test)
+
+# Define and fit ANN model 
+mlp_cls = MLPClassifier(hidden_layer_sizes=(64, 32), activation='relu', max_iter=500, random_state=42)
+history = mlp_cls.fit(X_train, y_train)
+
+# Metrics 
+y_train_pred = mlp_cls.predict(X_train)
+y_test_pred = mlp_cls.predict(X_test)
+
+# Training & Testing Accuracy
+train_acc = accuracy_score(y_train, y_train_pred)
+test_acc = accuracy_score(y_test, y_test_pred)
+
+print(f"Training accuracy: {train_acc:.3f}")
+print(f"Testing accuracy: {test_acc:.3f}")
+
+# Loss Curve 
+plt.figure()
+plt.plot(mlp_cls.loss_curve_)
+plt.title('Training Loss Curve')
+plt.xlabel('Epochs')
+plt.ylabel('Loss')
+plt.show()
+
+# Confusion Matrix 
+cm = confusion_matrix(y_test, y_test_pred)
+plt.figure(figsize=(6,5))
+sns.heatmap(cm, annot=True, fmt="d", cmap="Blues", xticklabels=le.classes_, yticklabels=le.classes_)
+plt.title("Confusion Matrix (Test Set)")
+plt.xlabel("Predicted Label")
+plt.ylabel("True Label")
+plt.show()
+
+# Classification Report (includes accuracy, precision, recall, F1, weighted avg) 
+print("Classification Report - Test Set")
+print(classification_report(y_test, y_test_pred, target_names=le.classes_))
+
+# ROC/AUC (One-vs-Rest) 
+if len(le.classes_) == 2:
+    y_test_prob = mlp_cls.predict_proba(X_test)[:,1]
+    fpr, tpr, thresholds = roc_curve(y_test, y_test_prob)
+    roc_auc = auc(fpr, tpr)
+
+    plt.figure()
+    plt.plot(fpr, tpr, label=f'AUC = {roc_auc:.2f}')
+    plt.plot([0,1], [0,1], 'k--')
+    plt.xlabel('False Positive Rate')
+    plt.ylabel('True Positive Rate')
+    plt.title('ROC Curve (Test Set)')
+    plt.legend()
+    plt.show()
+else:
+    # For multiclass, One-vs-Rest AUC
+    y_test_bin = label_binarize(y_test, classes=range(len(le.classes_)))
+    y_test_pred_prob = mlp_cls.predict_proba(X_test)
+    roc_auc = roc_auc_score(y_test_bin, y_test_pred_prob, average='weighted')
+    print(f"Weighted Average AUC (multi-class): {roc_auc:.3f}")
